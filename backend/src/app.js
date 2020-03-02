@@ -18,12 +18,8 @@ function setUpApp(app, recipeService) {
   ))
 
   app.get('/recipes', wrapAsync(
-    () => recipeService.find()
+    req => recipeService.find(req.query.text)
   ))
-
-  app.get('/recipes/text/:text', wrapAsync(
-    req => recipeService.find(req.params.text))
-  )
 
   app.get('/recipes/best/:days', wrapAsync(function(req) {
     const days = Number.parseInt(req.params.days)
