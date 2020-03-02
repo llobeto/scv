@@ -2,4 +2,8 @@
 
 ## Backend
 
-See [readme] (https://github.com/llobeto/scv/blob/master/backend/README.md).
+See https://github.com/llobeto/scv/blob/master/backend/README.md.
+
+## Frontend
+
+Not implemented.
