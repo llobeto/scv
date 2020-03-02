@@ -11,6 +11,16 @@ const validRecipe = {
   steps: ['Put the chicken in a pan with boiling oil', 'wait']
 }
 
+const anotherValidRecipe = {
+  name: 'Caesar Salad',
+  ingredients: [
+    {name: 'chicken', quantity: 1,  unit: 'unit'},
+    {name: 'oil', quantity: 0.1,  unit: 'litres'},
+    {name: 'letuce', quantity: 200,  unit: 'grams'}
+  ],
+  steps: ['Mix all together']
+}
+
 describe('Recipe', () => {
 
   describe('create', () => {
@@ -221,6 +231,111 @@ describe('Recipe', () => {
 
       const recipeService = withDatastore(fakeDatastore)
       await recipeService.rate('an id', 1)
+    })
+  })
+
+
+  describe('find', () => {
+
+    const fakeDatastore = {
+      find(query, callback) {
+        expect(query).to.be.deep.eq({})
+        callback(undefined, [ validRecipe, anotherValidRecipe ])
+      }
+    }
+    const recipeService = withDatastore(fakeDatastore)
+
+    it('Empty search string returns all the recipes', async () => {
+      const results = await recipeService.find()
+      expect(results).to.be.deep.eq([ validRecipe, anotherValidRecipe ])
+    })
+    it('When a recipe name matches it is returned', async () => {
+      const results = await recipeService.find('fried!')
+      expect(results).to.be.deep.eq([ validRecipe ])
+    })
+    it('When a recipe ingredient name matches, the recipe is returned', async () => {
+      const results = await recipeService.find('LETUCE')
+      expect(results).to.be.deep.eq([ anotherValidRecipe ])
+    })
+  })
+
+
+  describe('best', () => {
+
+    const rating = (stars, howOldInDays) => ({ stars, time: Date.now() - (howOldInDays * 24 * 60 * 60* 1000) })
+
+    const fakeDatastore = {
+      find(query, callback) {
+        expect(query).to.be.deep.eq({})
+        callback(undefined, [
+          // Expected score: 2
+          {
+            _id: '1',
+            ratings: [ rating(2, 1) ],
+          ...validRecipe
+          },
+          // Expected score: 2.5
+          {
+            _id: '2',
+            ratings: [ rating(2, 2), rating(3, 3), rating(4, 6)],
+          ...validRecipe
+          },
+          // Expected: ignored (no score)
+          {
+            _id: '3',
+            ratings: [],
+          ...validRecipe
+          },
+          // Expected score: ignored (out of count)
+          {
+            _id: '4',
+            ratings: [ rating(1, 2), rating(5, 6)],
+          ...validRecipe
+          }
+        ])
+      }
+    }
+    const recipeService = withDatastore(fakeDatastore)
+
+    it('Invalid argument days, throw invalid-argument', async () => {
+      try {
+        await recipeService.best('many', 5)
+        expect.fail()
+      } catch(err) {
+        expect(err.code).to.be.eq(ErrorCodes.invalidArgument)
+      }
+    })
+    it('Negative days, throw invalid-argument', async () => {
+      try {
+        await recipeService.best(-3, 5)
+        expect.fail()
+      } catch(err) {
+        expect(err.code).to.be.eq(ErrorCodes.invalidArgument)
+      }
+    })
+    it('Invalid argument count, throw invalid-argument', async () => {
+      try {
+        await recipeService.best(5, 'many')
+        expect.fail()
+      } catch(err) {
+        expect(err.code).to.be.eq(ErrorCodes.invalidArgument)
+      }
+    })
+    it('Negative count, throw invalid-argument', async () => {
+      try {
+        await recipeService.best(5, -2)
+        expect.fail()
+      } catch(err) {
+        expect(err.code).to.be.eq(ErrorCodes.invalidArgument)
+      }
+    })
+    it('Valid arguments, successfuly filtered and truncated', async () => {
+      const results = await recipeService.best(5, 2)
+      expect(results.length).to.be.eq(2)
+      expect(results[0].score).to.be.eq(2.5)
+      expect(results[0].id).to.be.eq('2')
+      expect(results[1].score).to.be.eq(2)
+      expect(results[1].id).to.be.eq('1')
     })
   })
 })
