@@ -12,7 +12,6 @@ const Datastore = require('nedb')
  */
 function createDatastore(dataFileFullPath) {
   ensureDirSync(dirname(dataFileFullPath))
-
   return new Datastore({ filename: dataFileFullPath, autoload: true })
 }
 
