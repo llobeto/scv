@@ -2,13 +2,6 @@
  * Some type for better code assistance
  */
 
-export type Stars = 1 | 2 | 3 | 4 | 5
-
-export type Rating = {
-  stars: Stars;
-  time: number;
-}
-
 export type Ingredient = {
   name: string;
   quantity: number;
