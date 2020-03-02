@@ -2,4 +2,4 @@
 
 ## Backend
 
-See [readme.md] (./backend/readme.md).
+See [readme.md] (https://github.com/llobeto/scv/blob/master/backend/README.md).
