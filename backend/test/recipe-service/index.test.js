@@ -1,6 +1,7 @@
 const { expect } = require('chai')
 
-const { withDatastore, ErrorCodes } = require('../../src/recipe/index')
+const { invalidArgument, notFound } = require('../../src/error-codes')
+const { withDatastore } = require('../../src/recipe-service/index')
 
 const validRecipe = {
   name: 'Fried chicken',
@@ -21,6 +22,9 @@ const anotherValidRecipe = {
   steps: ['Mix all together']
 }
 
+const rating = (stars, howOldInDays) =>
+  ({ stars, time: Date.now() - (howOldInDays * 24 * 60 * 60* 1000) })
+
 describe('Recipe', () => {
 
   describe('create', () => {
@@ -35,7 +39,7 @@ describe('Recipe', () => {
         })
         expect.fail()
       } catch(err) {
-        expect(err.code === ErrorCodes.invalidArgument)
+        expect(err.code === invalidArgument)
       }
     })
     it('Valid recipe is inserted in datastore', async () => {
@@ -66,7 +70,7 @@ describe('Recipe', () => {
         await recipeService.retrieve(8)
         expect.fail()
       } catch(err) {
-        expect(err.code === ErrorCodes.invalidArgument)
+        expect(err.code === invalidArgument)
       }
     })
     it('Empty id throw error with code invalid-argument and datastore is not used', async () => {
@@ -77,7 +81,7 @@ describe('Recipe', () => {
         await recipeService.retrieve('')
         expect.fail()
       } catch(err) {
-        expect(err.code === ErrorCodes.invalidArgument)
+        expect(err.code === invalidArgument)
       }
     })
     it('Valid id of unexistent recipe throws not-found', async () => {
@@ -95,7 +99,7 @@ describe('Recipe', () => {
         await recipeService.retrieve('an id')
         expect.fail()
       } catch(err) {
-        expect(err.code === ErrorCodes.notFound)
+        expect(err.code === notFound)
       }
     })
     it('Valid id of existent object with no ratings is retrieved without score', async () => {
@@ -142,7 +146,7 @@ describe('Recipe', () => {
         await recipeService.rate(8, 5)
         expect.fail()
       } catch(err) {
-        expect(err.code === ErrorCodes.invalidArgument)
+        expect(err.code === invalidArgument)
       }
     })
     it('Empty id throw error with code invalid-argument and datastore is not used', async () => {
@@ -153,7 +157,7 @@ describe('Recipe', () => {
         await recipeService.rate('', 5)
         expect.fail()
       } catch(err) {
-        expect(err.code === ErrorCodes.invalidArgument)
+        expect(err.code === invalidArgument)
       }
     })
     it('Valid id of unexistent recipe throws not-found', async () => {
@@ -171,7 +175,7 @@ describe('Recipe', () => {
         await recipeService.rate('an id', 5)
         expect.fail()
       } catch(err) {
-        expect(err.code === ErrorCodes.notFound)
+        expect(err.code === notFound)
       }
     })
     it('Invalid star number throws invalid-argument', async () => {
@@ -182,7 +186,7 @@ describe('Recipe', () => {
         await recipeService.rate('an id', 2.5)
         expect.fail()
       } catch(err) {
-        expect(err.code === ErrorCodes.invalidArgument)
+        expect(err.code === invalidArgument)
       }
     })
     it('Too big star number throws invalid-argument', async () => {
@@ -193,7 +197,7 @@ describe('Recipe', () => {
         await recipeService.rate('an id', 7)
         expect.fail()
       } catch(err) {
-        expect(err.code === ErrorCodes.invalidArgument)
+        expect(err.code === invalidArgument)
       }
     })
     it('Too small star number throws invalid-argument', async () => {
@@ -204,7 +208,7 @@ describe('Recipe', () => {
         await recipeService.rate('an id', 0)
         expect.fail()
       } catch(err) {
-        expect(err.code === ErrorCodes.invalidArgument)
+        expect(err.code === invalidArgument)
       }
     })
     it('Valid arguments, updated successfully', async () => {
@@ -240,29 +244,33 @@ describe('Recipe', () => {
     const fakeDatastore = {
       find(query, callback) {
         expect(query).to.be.deep.eq({})
-        callback(undefined, [ validRecipe, anotherValidRecipe ])
+        callback(undefined, [
+          { _id: '1', ratings: [ rating(2, 2), rating(3, 3)], ...validRecipe },
+          { _id: '2', ratings: [ rating(2, 1), rating(5, 10)], ...anotherValidRecipe }
+        ])
       }
     }
     const recipeService = withDatastore(fakeDatastore)
 
     it('Empty search string returns all the recipes', async () => {
       const results = await recipeService.find()
-      expect(results).to.be.deep.eq([ validRecipe, anotherValidRecipe ])
+      expect(results).to.be.deep.eq([
+        { id: '1', score: 2.5, ...validRecipe },
+        { id: '2', score: 3.5, ...anotherValidRecipe}
+      ])
     })
     it('When a recipe name matches it is returned', async () => {
       const results = await recipeService.find('fried!')
-      expect(results).to.be.deep.eq([ validRecipe ])
+      expect(results).to.be.deep.eq([ { id: '1', score: 2.5, ...validRecipe } ])
     })
     it('When a recipe ingredient name matches, the recipe is returned', async () => {
       const results = await recipeService.find('LETUCE')
-      expect(results).to.be.deep.eq([ anotherValidRecipe ])
+      expect(results).to.be.deep.eq([ { id: '2', score: 3.5, ...anotherValidRecipe} ])
     })
   })
 
 
   describe('best', () => {
-
-    const rating = (stars, howOldInDays) => ({ stars, time: Date.now() - (howOldInDays * 24 * 60 * 60* 1000) })
 
     const fakeDatastore = {
       find(query, callback) {
@@ -302,7 +310,7 @@ describe('Recipe', () => {
         await recipeService.best('many', 5)
         expect.fail()
       } catch(err) {
-        expect(err.code).to.be.eq(ErrorCodes.invalidArgument)
+        expect(err.code).to.be.eq(invalidArgument)
       }
     })
     it('Negative days, throw invalid-argument', async () => {
@@ -310,7 +318,7 @@ describe('Recipe', () => {
         await recipeService.best(-3, 5)
         expect.fail()
       } catch(err) {
-        expect(err.code).to.be.eq(ErrorCodes.invalidArgument)
+        expect(err.code).to.be.eq(invalidArgument)
       }
     })
     it('Invalid argument count, throw invalid-argument', async () => {
@@ -318,7 +326,7 @@ describe('Recipe', () => {
         await recipeService.best(5, 'many')
         expect.fail()
       } catch(err) {
-        expect(err.code).to.be.eq(ErrorCodes.invalidArgument)
+        expect(err.code).to.be.eq(invalidArgument)
       }
     })
     it('Negative count, throw invalid-argument', async () => {
@@ -326,7 +334,7 @@ describe('Recipe', () => {
         await recipeService.best(5, -2)
         expect.fail()
       } catch(err) {
-        expect(err.code).to.be.eq(ErrorCodes.invalidArgument)
+        expect(err.code).to.be.eq(invalidArgument)
       }
     })
     it('Valid arguments, successfuly filtered and truncated', async () => {

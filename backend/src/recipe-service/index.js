@@ -1,5 +1,6 @@
 const { promisify } = require('util')
 const { validateRecipe } = require('./recipe-validation')
+const { invalidArgument, notFound } = require('../error-codes')
 
 /**
  * @typedef {import('./types').Stars} Stars
@@ -7,15 +8,8 @@ const { validateRecipe } = require('./recipe-validation')
  * @typedef {import('../types').Recipe} Recipe
  * @typedef {import('../types').StoredRecipe} StoredRecipe
  * @typedef {import('./types').DBRecipe} DBRecipe
- * @typedef {import('../types').ErrorCodes} ErrorCodes
  * @typedef {import('nedb')} Datastore
  */
-
-/** @type {ErrorCodes} */
-const ErrorCodes = {
-  invalidArgument: 'invalid-argument',
-  notFound: 'not-found'
-}
 
 function error(code, message) {
   const err = new Error(message)
@@ -24,7 +18,7 @@ function error(code, message) {
 }
 
 /**
- * Recipe services
+ * Instantiate the recipe services using given datastore
  * @param {Datastore} datastore - Datastore to use for recipe persistence
  */
 function withDatastore(datastore) {
@@ -40,6 +34,14 @@ function withDatastore(datastore) {
       ratings.map(rating => rating.stars).reduce((a, b) => a + b, 0) / ratings.length
       : undefined
 
+  function convertToStoredRecipe({ _id, ratings, ...recipe }, fromTime = 0) {
+    const validRatings = ratings.filter(rating => rating.time >= fromTime)
+    return {
+      id: _id,
+      score: scoreBasedOnRatings(validRatings),
+      ...recipe
+    }
+  }
 
   /**
    * Creates a new recipe. Do not overwrite previowsly created recipes
@@ -51,7 +53,7 @@ function withDatastore(datastore) {
     const validationResult = validateRecipe(recipe)
 
     if (!validationResult.ok) {
-      throw error(ErrorCodes.invalidArgument, validationResult.message)
+      throw error(invalidArgument, validationResult.message)
     }
 
     const { name, ingredients, steps} = recipe
@@ -68,13 +70,13 @@ function withDatastore(datastore) {
 
   async function basicRetrieve(id) {
     if (typeof(id) !== 'string' || !id) {
-      throw error(ErrorCodes.invalidArgument, 'A valid id must be provided')
+      throw error(invalidArgument, 'A valid id must be provided')
     }
 
     /** @type {DBRecipe} */
     const document = await findById(id)
 
-    if (!document) throw error(ErrorCodes.notFound, 'Cannot find recipe with id ' + id)
+    if (!document) throw error(notFound, 'Cannot find recipe with id ' + id)
 
     return document
   }
@@ -107,14 +109,16 @@ function withDatastore(datastore) {
   async function rate(id, stars) {
 
     if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
-      throw error(ErrorCodes.invalidArgument, 'Star rating must be an integer number from 1 to 5')
+      throw error(invalidArgument, 'Star rating must be an integer number from 1 to 5')
     }
 
-    const { ratings } = await basicRetrieve(id)
+    const { ratings, name, ingredients, steps } = await basicRetrieve(id)
 
     const newRating = { stars, time: Date.now() }
 
-    await updateById(id, { ratings: [ newRating, ...ratings ] })
+    await updateById(id, { ratings: [ newRating, ...ratings ], name, ingredients, steps })
+
+    return newRating
   }
 
   /**
@@ -134,13 +138,14 @@ function withDatastore(datastore) {
     const recipeText = recipe =>
       simplifyTexts(recipe.name, ...recipe.ingredients.map(ingredient => ingredient.name))
 
-    const allRecipes = await findAll()
+    let recipes = await findAll()
 
-    if (!text) return allRecipes
-
-    const textToFind = simplifyTexts(text)
-
-    return allRecipes.filter(recipe => recipeText(recipe).indexOf(textToFind) >= 0)
+    if (text) {
+      // Filter
+      const textToFind = simplifyTexts(text)
+      recipes = recipes.filter(recipe => recipeText(recipe).indexOf(textToFind) >= 0)
+    }
+    return recipes.map(convertToStoredRecipe)
   }
 
   /**
@@ -151,27 +156,18 @@ function withDatastore(datastore) {
   async function best(days, count) {
 
     if (!Number.isInteger(days) || days <= 0) {
-      throw error(ErrorCodes.invalidArgument, 'Invalid period')
+      throw error(invalidArgument, 'Invalid period')
     }
     if (!Number.isInteger(count) || count <= 0) {
-      throw error(ErrorCodes.invalidArgument, 'Invalid count')
+      throw error(invalidArgument, 'Invalid count')
     }
 
     const fromTime = Date.now() - (days * 24 * 60 * 60 * 1000)
 
-    function convertRecipe({ _id, ratings, ...recipe }) {
-      const validRatings = ratings.filter(rating => rating.time >= fromTime)
-      return {
-        id: _id,
-        score: scoreBasedOnRatings(validRatings),
-        ...recipe
-      }
-    }
-
     const allRecipes = await findAll()
 
     return allRecipes
-      .map(convertRecipe)
+      .map(recipe => convertToStoredRecipe(recipe, fromTime))
       .filter(recipe => recipe.score != undefined)
       .sort((recipe1, recipe2) => recipe2.score - recipe1.score)
       .slice(0, count)
@@ -180,4 +176,4 @@ function withDatastore(datastore) {
   return { create,  retrieve, rate, find, best }
 }
 
-module.exports = { withDatastore, ErrorCodes }
+module.exports = { withDatastore }

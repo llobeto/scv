@@ -1,5 +1,5 @@
 const { expect } = require('chai')
-const { validateRecipe } = require('../../src/recipe/recipe-validation')
+const { validateRecipe } = require('../../src/recipe-service/recipe-validation')
 
 describe('Recipe validation', () => {
   describe('validateRecipe', () => {
