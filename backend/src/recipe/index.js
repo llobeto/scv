@@ -2,6 +2,7 @@ const { promisify } = require('util')
 const { validateRecipe } = require('./recipe-validation')
 
 /**
+ * @typedef {import('./types').Stars} Stars
  * @typedef {import('../types').Ingredient} Ingredient
  * @typedef {import('../types').Recipe} Recipe
  * @typedef {import('../types').StoredRecipe} StoredRecipe
@@ -28,7 +29,11 @@ function error(code, message) {
  */
 function withDatastore(datastore) {
 
+  // Promisified version of datastore methods
   const insert = promisify((doc, callback) => datastore.insert(doc, callback))
+  const findById = promisify((id, callback) => datastore.findOne({ _id: id }, callback))
+  const updateById = promisify((id, data, callback) => datastore.update({ _id: id }, data, {}, callback))
+
 
   /**
    * Creates a new recipe. Do not overwrite previowsly created recipes
@@ -54,14 +59,8 @@ function withDatastore(datastore) {
     return { id, name, ingredients, steps}
   }
 
-  const findById = promisify((id, callback) => datastore.findOne({ _id: id }, callback))
 
-  /**
-   *
-   * @param {string} id
-   * @returns {Promise<StoredRecipe>}
-   */
-  async function retrieve(id) {
+  async function basicRetrieve(id) {
     if (typeof(id) !== 'string' || !id) {
       throw error(ErrorCodes.invalidArgument, 'A valid id must be provided')
     }
@@ -71,7 +70,18 @@ function withDatastore(datastore) {
 
     if (!document) throw error(ErrorCodes.notFound, 'Cannot find recipe with id ' + id)
 
-    const { _id, name, ingredients, steps, ratings } = document
+    return document
+  }
+
+
+  /**
+   *
+   * @param {string} id
+   * @returns {Promise<StoredRecipe>}
+   */
+  async function retrieve(id) {
+
+    const { _id, name, ingredients, steps, ratings } = await basicRetrieve(id)
 
     // Average of all stars
     const score = ratings.length > 0 ?
@@ -87,7 +97,26 @@ function withDatastore(datastore) {
     }
   }
 
-  return { create,  retrieve }
+
+  /**
+   *
+   * @param {string} id
+   * @param {Stars} stars
+   */
+  async function rate(id, stars) {
+
+    if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
+      throw error(ErrorCodes.invalidArgument, 'Star rating must be an integer number from 1 to 5')
+    }
+
+    const { ratings } = await basicRetrieve(id)
+
+    const newRating = { stars, time: Date.now() }
+
+    await updateById(id, { ratings: [ newRating, ...ratings ] })
+  }
+
+  return { create,  retrieve, rate }
 }
 
 module.exports = { withDatastore, ErrorCodes }

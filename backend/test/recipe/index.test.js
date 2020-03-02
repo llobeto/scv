@@ -12,6 +12,7 @@ const validRecipe = {
 }
 
 describe('Recipe', () => {
+
   describe('create', () => {
     it('Invalid recipe name throw error with code invalid-argument and datastore is not used', async () => {
 
@@ -118,6 +119,108 @@ describe('Recipe', () => {
       expect(recipe).to.be.deep.eq(validRecipe)
       expect(id).to.be.deep.eq('an id')
       expect(score).to.be.eq(2.5)
+    })
+  })
+
+
+  describe('rate', () => {
+    it('Invalid id throw error with code invalid-argument and datastore is not used', async () => {
+
+      const recipeService = withDatastore({})
+
+      try {
+        await recipeService.rate(8, 5)
+        expect.fail()
+      } catch(err) {
+        expect(err.code === ErrorCodes.invalidArgument)
+      }
+    })
+    it('Empty id throw error with code invalid-argument and datastore is not used', async () => {
+
+      const recipeService = withDatastore({})
+
+      try {
+        await recipeService.rate('', 5)
+        expect.fail()
+      } catch(err) {
+        expect(err.code === ErrorCodes.invalidArgument)
+      }
+    })
+    it('Valid id of unexistent recipe throws not-found', async () => {
+
+      const fakeDatastore = {
+        findOne(id, callback) {
+          expect(id).to.be.eq('an id')
+          callback(undefined, null)
+        }
+      }
+
+      const recipeService = withDatastore(fakeDatastore)
+
+      try {
+        await recipeService.rate('an id', 5)
+        expect.fail()
+      } catch(err) {
+        expect(err.code === ErrorCodes.notFound)
+      }
+    })
+    it('Invalid star number throws invalid-argument', async () => {
+
+      const recipeService = withDatastore({})
+
+      try {
+        await recipeService.rate('an id', 2.5)
+        expect.fail()
+      } catch(err) {
+        expect(err.code === ErrorCodes.invalidArgument)
+      }
+    })
+    it('Too big star number throws invalid-argument', async () => {
+
+      const recipeService = withDatastore({})
+
+      try {
+        await recipeService.rate('an id', 7)
+        expect.fail()
+      } catch(err) {
+        expect(err.code === ErrorCodes.invalidArgument)
+      }
+    })
+    it('Too small star number throws invalid-argument', async () => {
+
+      const recipeService = withDatastore({})
+
+      try {
+        await recipeService.rate('an id', 0)
+        expect.fail()
+      } catch(err) {
+        expect(err.code === ErrorCodes.invalidArgument)
+      }
+    })
+    it('Valid arguments, updated successfully', async () => {
+
+      const existentRating = { stars: 2, time: 6 }
+      const startTime = Date.now()
+
+      const fakeDatastore = {
+        findOne(query, callback) {
+          expect(query).to.be.deep.eq({ _id: 'an id'})
+          callback(undefined, { _id: query._id, ...validRecipe, ratings: [existentRating]})
+        },
+        update(query, data, options, callback) {
+          expect(query).to.be.deep.eq({ _id: 'an id'})
+          expect(data.ratings.length).to.be.eq(2)
+          expect(data.ratings[0].stars).to.be.eq(1)
+          expect(data.ratings[0].time).to.be.lte(Date.now())
+          expect(data.ratings[0].time).to.be.gte(startTime)
+          expect(data.ratings[1]).to.be.deep.eq(existentRating)
+          expect(options).to.be.deep.eq({})
+          callback(undefined, undefined)
+        }
+      }
+
+      const recipeService = withDatastore(fakeDatastore)
+      await recipeService.rate('an id', 1)
     })
   })
 })
